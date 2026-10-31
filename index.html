@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Interactivo de Electrólisis (Agua y NaCl)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- MathJax for rendering chemical equations cleanly -->
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        canvas {
+            touch-action: none;
+        }
+        /* Custom scrollbar for modern feel */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between">
+
+    <!-- Header Navigation -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-blue-600/20 text-blue-400 rounded-lg border border-blue-500/30">
+                    <i data-lucide="zap" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-slate-100 leading-tight">Simulador de Electrólisis</h1>
+                    <p class="text-xs text-slate-400">Agua pura vs. Cloruro de Sodio Acuoso (Salmuera)</p>
+                </div>
+            </div>
+
+            <!-- Mode Selector Switcher -->
+            <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button id="modeWaterBtn" onclick="setMode('water')" class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 bg-blue-600 text-white shadow-md shadow-blue-500/20 flex items-center gap-2">
+                    <i data-lucide="droplet" class="w-4 h-4"></i> Electrólisis de Agua (H₂O)
+                </button>
+                <button id="modeNaclBtn" onclick="setMode('nacl')" class="px-4 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition-all duration-200 flex items-center gap-2">
+                    <i data-lucide="flask-conical" class="w-4 h-4"></i> Salmuera (NaCl + H₂O)
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="max-w-7xl mx-auto px-4 py-6 w-full grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow">
+        
+        <!-- Left Panel: Controls & Equations (4 Cols) -->
+        <div class="lg:col-span-4 flex flex-col gap-6">
+            
+            <!-- Controls Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                        <i data-lucide="sliders" class="w-4 h-4 text-blue-400"></i> Parámetros de Control
+                    </h2>
+                    <span id="statusBadge" class="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Listo</span>
+                </div>
+
+                <div class="space-y-4 text-sm">
+                    <!-- Voltage Slider -->
+                    <div>
+                        <div class="flex justify-between mb-1 text-xs">
+                            <label class="text-slate-400">Voltaje Aplicado ($V$):</label>
+                            <span id="voltValue" class="font-mono text-blue-400 font-semibold">12.0 V</span>
+                        </div>
+                        <input type="range" id="voltInput" min="1.5" max="30" step="0.5" value="12" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                    </div>
+
+                    <!-- Current Slider -->
+                    <div>
+                        <div class="flex justify-between mb-1 text-xs">
+                            <label class="text-slate-400">Corriente ($I$):</label>
+                            <span id="currValue" class="font-mono text-emerald-400 font-semibold">2.5 A</span>
+                        </div>
+                        <input type="range" id="currInput" min="0.1" max="10.0" step="0.1" value="2.5" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                    </div>
+
+                    <!-- NaCl Concentration (Only visible in NaCl mode) -->
+                    <div id="concContainer" class="hidden">
+                        <div class="flex justify-between mb-1 text-xs">
+                            <label class="text-slate-400">Concentración NaCl:</label>
+                            <span id="concValue" class="font-mono text-amber-400 font-semibold">1.0 M</span>
+                        </div>
+                        <input type="range" id="concInput" min="0.1" max="5.0" step="0.1" value="1.0" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                    </div>
+
+                    <!-- Temperature Slider -->
+                    <div>
+                        <div class="flex justify-between mb-1 text-xs">
+                            <label class="text-slate-400">Temperatura ($T$):</label>
+                            <span id="tempValue" class="font-mono text-purple-400 font-semibold">25 °C</span>
+                        </div>
+                        <input type="range" id="tempInput" min="10" max="80" step="1" value="25" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-500">
+                    </div>
+
+                    <!-- Indicator Toggle -->
+                    <div class="pt-2 border-t border-slate-800 flex items-center justify-between">
+                        <span class="text-xs text-slate-300 font-medium">Indicador de pH (Fenolftaleína)</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="indicatorToggle" class="sr-only peer" checked>
+                            <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                        </label>
+                    </div>
+
+                    <!-- Speed & Play Controls -->
+                    <div class="pt-4 border-t border-slate-800 flex gap-2">
+                        <button id="startBtn" onclick="toggleSimulation()" class="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-500 font-semibold text-white rounded-xl shadow-lg shadow-blue-600/30 transition flex items-center justify-center gap-2 text-sm">
+                            <i data-lucide="play" id="playIcon" class="w-4 h-4"></i> <span id="playText">Iniciar</span>
+                        </button>
+                        <button onclick="resetSimulation()" class="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition flex items-center justify-center text-sm" title="Reiniciar">
+                            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reactions Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex-grow flex flex-col justify-between">
+                <div>
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300 mb-3 flex items-center gap-2">
+                        <i data-lucide="atom" class="w-4 h-4 text-purple-400"></i> Reacciones Químicas
+                    </h2>
+
+                    <!-- Anode reaction -->
+                    <div class="bg-slate-950/60 p-3 rounded-xl border border-red-500/20 mb-3">
+                        <div class="flex justify-between items-center text-xs mb-1">
+                            <span class="font-bold text-red-400">Ánodo (+) [Oxidación]</span>
+                            <span id="anodePot" class="font-mono text-slate-400 text-[10px]">E° = -1.23 V</span>
+                        </div>
+                        <div id="anodeEq" class="text-xs font-mono text-slate-200 overflow-x-auto">
+                            2H₂O(l) → O₂(g) + 4H⁺(aq) + 4e⁻
+                        </div>
+                    </div>
+
+                    <!-- Cathode reaction -->
+                    <div class="bg-slate-950/60 p-3 rounded-xl border border-blue-500/20 mb-3">
+                        <div class="flex justify-between items-center text-xs mb-1">
+                            <span class="font-bold text-blue-400">Cátodo (-) [Reducción]</span>
+                            <span id="cathodePot" class="font-mono text-slate-400 text-[10px]">E° = -0.83 V</span>
+                        </div>
+                        <div id="cathodeEq" class="text-xs font-mono text-slate-200 overflow-x-auto">
+                            2H₂O(l) + 2e⁻ → H₂(g) + 2OH⁻(aq)
+                        </div>
+                    </div>
+
+                    <!-- Global reaction -->
+                    <div class="bg-slate-950/80 p-3 rounded-xl border border-emerald-500/20">
+                        <div class="text-xs font-bold text-emerald-400 mb-1">Reacción Global</div>
+                        <div id="globalEq" class="text-xs font-mono text-slate-200 overflow-x-auto">
+                            2H₂O(l) → 2H₂(g) + O₂(g)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 p-3 bg-blue-950/30 border border-blue-800/30 rounded-xl text-xs text-blue-300 flex items-start gap-2">
+                    <i data-lucide="info" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <p id="infoText">Los electrones fluyen del Ánodo (+) al Cátodo (-). La reducción produce hidrógeno en el Cátodo.</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Panel: Canvas & Metrics (8 Cols) -->
+        <div class="lg:col-span-8 flex flex-col gap-6">
+            
+            <!-- Canvas Container -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl relative overflow-hidden flex flex-col items-center">
+                <div class="w-full flex justify-between items-center mb-2 px-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="eye" class="w-4 h-4 text-emerald-400"></i> Vista Celda Electrolítica
+                    </span>
+                    <div class="flex gap-4 text-xs">
+                        <span class="flex items-center gap-1 text-red-400 font-semibold"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span> Ánodo (+)</span>
+                        <span class="flex items-center gap-1 text-blue-400 font-semibold"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Cátodo (-)</span>
+                    </div>
+                </div>
+
+                <!-- Interactive Simulation Canvas -->
+                <div class="w-full aspect-[16/10] max-h-[460px] relative bg-slate-950 rounded-xl border border-slate-800/80 overflow-hidden">
+                    <canvas id="simCanvas" class="w-full h-full block"></canvas>
+                </div>
+            </div>
+
+            <!-- Quantitative Measurements Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                
+                <!-- Elapsed Time -->
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-md">
+                    <div class="text-xs text-slate-400 mb-1 flex items-center justify-between">
+                        <span>Tiempo Transcurrido</span>
+                        <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-500"></i>
+                    </div>
+                    <div id="metricTime" class="text-xl font-bold font-mono text-slate-100">00:00 s</div>
+                    <div class="text-[10px] text-slate-500 mt-1">Carga (Q): <span id="metricQ">0 C</span></div>
+                </div>
+
+                <!-- Gas Left (Cathode) -->
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-md">
+                    <div class="text-xs text-slate-400 mb-1 flex items-center justify-between">
+                        <span>Vol. H₂ (Cátodo)</span>
+                        <i data-lucide="wind" class="w-3.5 h-3.5 text-blue-400"></i>
+                    </div>
+                    <div id="metricH2" class="text-xl font-bold font-mono text-blue-400">0.00 mL</div>
+                    <div class="text-[10px] text-slate-500 mt-1">Moles: <span id="molesH2">0.00 mmol</span></div>
+                </div>
+
+                <!-- Gas Right (Anode) -->
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-md">
+                    <div class="text-xs text-slate-400 mb-1 flex items-center justify-between">
+                        <span id="anodeGasLabel">Vol. O₂ (Ánodo)</span>
+                        <i data-lucide="wind" class="w-3.5 h-3.5 text-red-400"></i>
+                    </div>
+                    <div id="metricAnodeGas" class="text-xl font-bold font-mono text-red-400">0.00 mL</div>
+                    <div class="text-[10px] text-slate-500 mt-1">Moles: <span id="molesAnodeGas">0.00 mmol</span></div>
+                </div>
+
+                <!-- Consumed Mass / pH -->
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-md">
+                    <div class="text-xs text-slate-400 mb-1 flex items-center justify-between">
+                        <span id="extraMetricLabel">pH Local Cátodo</span>
+                        <i data-lucide="test-tube" class="w-3.5 h-3.5 text-purple-400"></i>
+                    </div>
+                    <div id="extraMetricValue" class="text-xl font-bold font-mono text-purple-400">7.00</div>
+                    <div class="text-[10px] text-slate-500 mt-1" id="extraMetricSub">Estado: Neutro</div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 py-3 bg-slate-950 text-center text-xs text-slate-500">
+        Simulación física basada en las Leyes de Electrólisis de Faraday & Ecuación de Gases Ideales.
+    </footer>
+
+    <!-- Simulation Script -->
+    <script>
+        // --- CONSTANTS ---
+        const F = 96485.33; // Faraday Constant C/mol
+        const R = 0.08206; // Gas Constant L*atm / (mol*K)
+        const P_ATM = 1.0; // Pressure in atm
+
+        // --- STATE VARIABLES ---
+        let mode = 'water'; // 'water' or 'nacl'
+        let isRunning = false;
+        let lastTimestamp = 0;
+
+        // User parameters
+        let voltage = 12.0;
+        let current = 2.5;
+        let naclConc = 1.0; // mol/L
+        let tempC = 25; // °C
+
+        // Calculated physics state
+        let elapsedTime = 0; // seconds
+        let totalCharge = 0; // Coulombs (Q = I * t)
+        let molesH2 = 0;
+        let molesAnodeGas = 0; // O2 or Cl2
+        let naclConsumedMass = 0; // grams
+
+        // UI & Canvas elements
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Particle system
+        let ions = [];
+        let bubbles = [];
+        let circuitElectrons = [];
+
+        // Dynamic element references
+        const modeWaterBtn = document.getElementById('modeWaterBtn');
+        const modeNaclBtn = document.getElementById('modeNaclBtn');
+        const concContainer = document.getElementById('concContainer');
+        const startBtn = document.getElementById('startBtn');
+        const playIcon = document.getElementById('playIcon');
+        const playText = document.getElementById('playText');
+        const statusBadge = document.getElementById('statusBadge');
+        const indicatorToggle = document.getElementById('indicatorToggle');
+
+        // Initial setup
+        function init() {
+            lucide.createIcons();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            setupInputListeners();
+            resetSimulation();
+            requestAnimationFrame(renderLoop);
+        }
+
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            initParticles();
+        }
+
+        function setupInputListeners() {
+            document.getElementById('voltInput').addEventListener('input', (e) => {
+                voltage = parseFloat(e.target.value);
+                document.getElementById('voltValue').innerText = voltage.toFixed(1) + ' V';
+            });
+            document.getElementById('currInput').addEventListener('input', (e) => {
+                current = parseFloat(e.target.value);
+                document.getElementById('currValue').innerText = current.toFixed(1) + ' A';
+            });
+            document.getElementById('concInput').addEventListener('input', (e) => {
+                naclConc = parseFloat(e.target.value);
+                document.getElementById('concValue').innerText = naclConc.toFixed(1) + ' M';
+            });
+            document.getElementById('tempInput').addEventListener('input', (e) => {
+                tempC = parseFloat(e.target.value);
+                document.getElementById('tempValue').innerText = tempC + ' °C';
+            });
+        }
+
+        // --- SIMULATION MODE CONTROLLER ---
+        function setMode(newMode) {
+            mode = newMode;
+            if (mode === 'water') {
+                modeWaterBtn.className = "px-4 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 bg-blue-600 text-white shadow-md shadow-blue-500/20 flex items-center gap-2";
+                modeNaclBtn.className = "px-4 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition-all duration-200 flex items-center gap-2";
+                concContainer.classList.add('hidden');
+                
+                // Update Reactions Equations Text
+                document.getElementById('anodePot').innerText = 'E° = +1.23 V';
+                document.getElementById('anodeEq').innerText = '2H₂O(l) → O₂(g) + 4H⁺(aq) + 4e⁻';
+                document.getElementById('cathodePot').innerText = 'E° = -0.83 V';
+                document.getElementById('cathodeEq').innerText = '2H₂O(l) + 2e⁻ → H₂(g) + 2OH⁻(aq)';
+                document.getElementById('globalEq').innerText = '2H₂O(l) → 2H₂(g) + O₂(g)';
+                document.getElementById('anodeGasLabel').innerText = 'Vol. O₂ (Ánodo)';
+                document.getElementById('extraMetricLabel').innerText = 'pH Local Cátodo';
+                document.getElementById('infoText').innerText = 'Electrólisis de Agua Pura. Se produce Gas Oxígeno en el Ánodo y Gas Hidrógeno en el Cátodo.';
+            } else {
+                modeNaclBtn.className = "px-4 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 bg-amber-600 text-white shadow-md shadow-amber-500/20 flex items-center gap-2";
+                modeWaterBtn.className = "px-4 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition-all duration-200 flex items-center gap-2";
+                concContainer.classList.remove('hidden');
+
+                // Update Reactions Equations Text for Brine
+                document.getElementById('anodePot').innerText = 'E° = +1.36 V';
+                document.getElementById('anodeEq').innerText = '2Cl⁻(aq) → Cl₂(g) + 2e⁻';
+                document.getElementById('cathodePot').innerText = 'E° = -0.83 V';
+                document.getElementById('cathodeEq').innerText = '2H₂O(l) + 2e⁻ → H₂(g) + 2OH⁻(aq)';
+                document.getElementById('globalEq').innerText = '2NaCl(aq) + 2H₂O(l) → 2NaOH(aq) + H₂(g) + Cl₂(g)';
+                document.getElementById('anodeGasLabel').innerText = 'Vol. Cl₂ (Ánodo)';
+                document.getElementById('extraMetricLabel').innerText = 'NaCl Consumido';
+                document.getElementById('infoText').innerText = 'Proceso Cloro-Álcali: Los iones Cl⁻ se oxidan en el Ánodo produciendo gas Cl₂ (verde pálido). En el Cátodo se produce H₂ y NaOH acumulado.';
+            }
+            resetSimulation();
+        }
+
+        // --- RESET SIMULATION ---
+        function resetSimulation() {
+            isRunning = false;
+            elapsedTime = 0;
+            totalCharge = 0;
+            molesH2 = 0;
+            molesAnodeGas = 0;
+            naclConsumedMass = 0;
+
+            updateUI();
+            initParticles();
+            
+            startBtn.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+            startBtn.classList.add('bg-blue-600', 'hover:bg-blue-500');
+            playText.innerText = 'Iniciar';
+            playIcon.setAttribute('data-lucide', 'play');
+            statusBadge.innerText = 'Detenido';
+            statusBadge.className = 'text-xs px-2.5 py-1 rounded-full font-medium bg-slate-800 text-slate-400 border border-slate-700';
+            lucide.createIcons();
+        }
+
+        // --- TOGGLE RUN/PAUSE ---
+        function toggleSimulation() {
+            isRunning = !isRunning;
+            if (isRunning) {
+                lastTimestamp = performance.now();
+                startBtn.classList.remove('bg-blue-600', 'hover:bg-blue-500');
+                startBtn.classList.add('bg-amber-600', 'hover:bg-amber-500');
+                playText.innerText = 'Pausar';
+                playIcon.setAttribute('data-lucide', 'pause');
+                statusBadge.innerText = 'En Ejecución';
+                statusBadge.className = 'text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+            } else {
+                startBtn.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+                startBtn.classList.add('bg-blue-600', 'hover:bg-blue-500');
+                playText.innerText = 'Continuar';
+                playIcon.setAttribute('data-lucide', 'play');
+                statusBadge.innerText = 'Pausado';
+                statusBadge.className = 'text-xs px-2.5 py-1 rounded-full font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20';
+            }
+            lucide.createIcons();
+        }
+
+        // --- PARTICLES INITIALIZATION ---
+        function initParticles() {
+            ions = [];
+            bubbles = [];
+            circuitElectrons = [];
+
+            const w = canvas.width;
+            const h = canvas.height;
+            const solutionBottom = h * 0.85;
+            const solutionTop = h * 0.45;
+
+            // Generate Ions inside liquid region
+            const numIons = 40;
+            for (let i = 0; i < numIons; i++) {
+                let type;
+                if (mode === 'water') {
+                    type = Math.random() > 0.5 ? 'H+' : 'OH-';
+                } else {
+                    const r = Math.random();
+                    if (r < 0.4) type = 'Na+';
+                    else if (r < 0.8) type = 'Cl-';
+                    else if (r < 0.9) type = 'H+';
+                    else type = 'OH-';
+                }
+
+                ions.push({
+                    x: w * 0.2 + Math.random() * (w * 0.6),
+                    y: solutionTop + Math.random() * (solutionBottom - solutionTop - 20),
+                    vx: (Math.random() - 0.5) * 0.8,
+                    vy: (Math.random() - 0.5) * 0.8,
+                    type: type,
+                    radius: type.length > 2 ? 6 : 5
+                });
+            }
+
+            // Electrons circuit positions
+            for (let i = 0; i < 12; i++) {
+                circuitElectrons.push({ progress: i / 12 });
+            }
+        }
+
+        // --- PHYSICS & MATH UPDATES (FARADAY'S LAWS) ---
+        function updatePhysics(dt) {
+            if (!isRunning) return;
+
+            elapsedTime += dt;
+            const dQ = current * dt; // Q = I * t
+            totalCharge += dQ;
+
+            // Faraday's Law: n = Q / (z * F)
+            const dMolesH2 = dQ / (2 * F);
+            molesH2 += dMolesH2;
+
+            if (mode === 'water') {
+                const dMolesO2 = dQ / (4 * F);
+                molesAnodeGas += dMolesO2;
+            } else {
+                const dMolesCl2 = dQ / (2 * F);
+                molesAnodeGas += dMolesCl2;
+                naclConsumedMass += dMolesCl2 * 2 * 58.44; 
+            }
+
+            // Spawn Bubbles at Electrodes
+            const spawnRate = Math.min(current * 0.05, 0.3);
+            if (Math.random() < spawnRate) {
+                bubbles.push({
+                    x: canvas.width * 0.3 + (Math.random() - 0.5) * 15,
+                    y: canvas.height * 0.75,
+                    vy: -1 - Math.random() * 1.5,
+                    radius: 2 + Math.random() * 3,
+                    type: 'H2'
+                });
+            }
+            if (Math.random() < spawnRate) {
+                bubbles.push({
+                    x: canvas.width * 0.7 + (Math.random() - 0.5) * 15,
+                    y: canvas.height * 0.75,
+                    vy: -1 - Math.random() * 1.5,
+                    radius: 2 + Math.random() * 3,
+                    type: mode === 'water' ? 'O2' : 'Cl2'
+                });
+            }
+
+            // Move Ions toward electrodes
+            const cathodeX = canvas.width * 0.3;
+            const anodeX = canvas.width * 0.7;
+
+            ions.forEach(ion => {
+                let targetX = ion.x;
+                if (ion.type === 'H+' || ion.type === 'Na+') {
+                    targetX = cathodeX;
+                } else if (ion.type === 'OH-' || ion.type === 'Cl-') {
+                    targetX = anodeX;
+                }
+
+                const dx = targetX - ion.x;
+                ion.vx += Math.sign(dx) * 0.05 * (current / 5);
+                ion.vx *= 0.92;
+
+                ion.x += ion.vx;
+                ion.y += ion.vy + (Math.random() - 0.5) * 0.5;
+
+                const solutionTop = canvas.height * 0.45;
+                const solutionBottom = canvas.height * 0.85;
+                if (ion.y < solutionTop + 10) ion.y = solutionTop + 10;
+                if (ion.y > solutionBottom - 10) ion.y = solutionBottom - 10;
+                if (ion.x < canvas.width * 0.15) ion.x = canvas.width * 0.15;
+                if (ion.x > canvas.width * 0.85) ion.x = canvas.width * 0.85;
+            });
+
+            // Update Bubbles
+            for (let i = bubbles.length - 1; i >= 0; i--) {
+                const b = bubbles[i];
+                b.y += b.vy;
+                b.x += (Math.random() - 0.5) * 0.5;
+                if (b.y < canvas.height * 0.25) {
+                    bubbles.splice(i, 1);
+                }
+            }
+
+            // Circuit electrons movement
+            circuitElectrons.forEach(e => {
+                e.progress += (current * 0.002);
+                if (e.progress > 1) e.progress -= 1;
+            });
+
+            updateUI();
+        }
+
+        // --- UPDATE METRICS DISPLAY ---
+        function updateUI() {
+            const mins = Math.floor(elapsedTime / 60);
+            const secs = Math.floor(elapsedTime % 60);
+            document.getElementById('metricTime').innerText = 
+                `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')} s`;
+            document.getElementById('metricQ').innerText = `${totalCharge.toFixed(1)} C`;
+
+            const T_Kelvin = tempC + 273.15;
+            const volH2_mL = (molesH2 * R * T_Kelvin / P_ATM) * 1000;
+            const volAnode_mL = (molesAnodeGas * R * T_Kelvin / P_ATM) * 1000;
+
+            document.getElementById('metricH2').innerText = `${volH2_mL.toFixed(2)} mL`;
+            document.getElementById('molesH2').innerText = `${(molesH2 * 1000).toFixed(2)} mmol`;
+
+            document.getElementById('metricAnodeGas').innerText = `${volAnode_mL.toFixed(2)} mL`;
+            document.getElementById('molesAnodeGas').innerText = `${(molesAnodeGas * 1000).toFixed(2)} mmol`;
+
+            if (mode === 'water') {
+                const concOH = Math.min(14, 7 + Math.log10(1 + molesH2 * 200));
+                document.getElementById('extraMetricValue').innerText = concOH.toFixed(2);
+                document.getElementById('extraMetricSub').innerText = concOH > 7.5 ? 'Básico (OH⁻)' : 'Neutro';
+            } else {
+                document.getElementById('extraMetricValue').innerText = `${naclConsumedMass.toFixed(3)} g`;
+                document.getElementById('extraMetricSub').innerText = `Moles: ${(molesAnodeGas * 2 * 1000).toFixed(1)} mmol`;
+            }
+        }
+
+        // --- RENDER LOOP ---
+        function renderLoop(timestamp) {
+            const dt = lastTimestamp ? (timestamp - lastTimestamp) / 1000 : 0;
+            lastTimestamp = timestamp;
+
+            if (dt < 0.2) {
+                updatePhysics(dt);
+            }
+
+            drawCell();
+            requestAnimationFrame(renderLoop);
+        }
+
+        function drawCell() {
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Container Liquid
+            const cellX = w * 0.15;
+            const cellY = h * 0.40;
+            const cellW = w * 0.70;
+            const cellH = h * 0.48;
+
+            const showIndicator = indicatorToggle.checked;
+            let liquidGrad = ctx.createLinearGradient(cellX, cellY, cellX + cellW, cellY);
+
+            if (showIndicator) {
+                const intensity = Math.min(1.0, molesH2 * 50);
+                const pinkAlpha = 0.1 + intensity * 0.55;
+                liquidGrad.addColorStop(0, `rgba(236, 72, 153, ${pinkAlpha})`);
+                liquidGrad.addColorStop(0.4, 'rgba(56, 189, 248, 0.15)');
+                liquidGrad.addColorStop(1, mode === 'nacl' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(56, 189, 248, 0.15)');
+            } else {
+                liquidGrad.addColorStop(0, 'rgba(56, 189, 248, 0.2)');
+                liquidGrad.addColorStop(1, mode === 'nacl' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(56, 189, 248, 0.2)');
+            }
+
+            ctx.fillStyle = liquidGrad;
+            ctx.fillRect(cellX, cellY, cellW, cellH);
+
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(cellX, cellY - 10, cellW, cellH + 10);
+
+            // Tubes
+            const cathodeX = w * 0.3;
+            const anodeX = w * 0.7;
+            const tubeW = 44;
+            const tubeH = h * 0.55;
+            const tubeTop = h * 0.18;
+
+            const T_K = tempC + 273.15;
+            const volH2_mL = (molesH2 * R * T_K / P_ATM) * 1000;
+            const volAnode_mL = (molesAnodeGas * R * T_K / P_ATM) * 1000;
+
+            const h2Height = Math.min(tubeH * 0.5, volH2_mL * 0.8);
+            const anodeGasHeight = Math.min(tubeH * 0.5, volAnode_mL * 0.8);
+
+            // Left Tube
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+            ctx.fillRect(cathodeX - tubeW / 2, tubeTop, tubeW, tubeH);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.fillRect(cathodeX - tubeW / 2 + 2, tubeTop + 2, tubeW - 4, h2Height);
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(cathodeX - tubeW / 2, tubeTop, tubeW, tubeH);
+            ctx.fillStyle = '#93c5fd';
+            ctx.font = 'bold 11px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText('H₂ (g)', cathodeX, tubeTop + 15);
+
+            // Right Tube
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+            ctx.fillRect(anodeX - tubeW / 2, tubeTop, tubeW, tubeH);
+            ctx.fillStyle = mode === 'nacl' ? 'rgba(163, 230, 53, 0.4)' : 'rgba(255, 255, 255, 0.25)';
+            ctx.fillRect(anodeX - tubeW / 2 + 2, tubeTop + 2, tubeW - 4, anodeGasHeight);
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(anodeX - tubeW / 2, tubeTop, tubeW, tubeH);
+            ctx.fillStyle = mode === 'nacl' ? '#a3e635' : '#fca5a5';
+            ctx.fillText(mode === 'nacl' ? 'Cl₂ (g)' : 'O₂ (g)', anodeX, tubeTop + 15);
+
+            // Electrodes
+            const elecW = 14;
+            const elecH = h * 0.45;
+            const elecY = h * 0.38;
+
+            // Cathode (-)
+            ctx.fillStyle = '#3b82f6';
+            ctx.fillRect(cathodeX - elecW / 2, elecY, elecW, elecH);
+            ctx.fillStyle = '#60a5fa';
+            ctx.fillText('-', cathodeX, elecY + 25);
+
+            // Anode (+)
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(anodeX - elecW / 2, elecY, elecW, elecH);
+            ctx.fillStyle = '#fca5a5';
+            ctx.fillText('+', anodeX, elecY + 25);
+
+            // Circuit
+            const wireY = h * 0.10;
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 3;
+
+            ctx.beginPath();
+            ctx.moveTo(cathodeX, elecY);
+            ctx.lineTo(cathodeX, wireY);
+            ctx.lineTo(anodeX, wireY);
+            ctx.lineTo(anodeX, elecY);
+            ctx.stroke();
+
+            const batX = w * 0.5;
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(batX - 25, wireY - 15, 50, 30);
+            ctx.strokeStyle = '#38bdf8';
+            ctx.strokeRect(batX - 25, wireY - 15, 50, 30);
+
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = 'bold 10px Inter';
+            ctx.fillText(`${voltage} V`, batX, wireY + 4);
+
+            if (isRunning) {
+                ctx.fillStyle = '#facc15';
+                circuitElectrons.forEach(e => {
+                    let px, py;
+                    const p = e.progress;
+                    if (p < 0.3) {
+                        const subP = p / 0.3;
+                        px = anodeX;
+                        py = elecY - subP * (elecY - wireY);
+                    } else if (p < 0.7) {
+                        const subP = (p - 0.3) / 0.4;
+                        px = anodeX - subP * (anodeX - cathodeX);
+                        py = wireY;
+                    } else {
+                        const subP = (p - 0.7) / 0.3;
+                        px = cathodeX;
+                        py = wireY + subP * (elecY - wireY);
+                    }
+
+                    ctx.beginPath();
+                    ctx.arc(px, py, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            // Bubbles
+            bubbles.forEach(b => {
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                if (b.type === 'H2') {
+                    ctx.fillStyle = 'rgba(147, 197, 253, 0.7)';
+                } else if (b.type === 'O2') {
+                    ctx.fillStyle = 'rgba(252, 165, 165, 0.7)';
+                } else {
+                    ctx.fillStyle = 'rgba(190, 242, 100, 0.8)';
+                }
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.stroke();
+            });
+
+            // Ions
+            ions.forEach(ion => {
+                ctx.beginPath();
+                ctx.arc(ion.x, ion.y, ion.radius, 0, Math.PI * 2);
+
+                if (ion.type === 'H+') ctx.fillStyle = '#38bdf8';
+                else if (ion.type === 'OH-') ctx.fillStyle = '#ec4899';
+                else if (ion.type === 'Na+') ctx.fillStyle = '#f59e0b';
+                else if (ion.type === 'Cl-') ctx.fillStyle = '#84cc16';
+
+                ctx.fill();
+
+                ctx.fillStyle = '#0f172a';
+                ctx.font = 'bold 8px Inter';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(ion.type, ion.x, ion.y);
+            });
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
